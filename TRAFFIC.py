@@ -1,6 +1,9 @@
 import logging
+from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.error import Forbidden, ChatNotFound
+from flask import Flask
 
 # Настройка логов
 logging.basicConfig(
@@ -9,6 +12,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Конфигурация
 TOKEN = "7974108077:AAHlziI44egQWkn4k9t1ZWWw7SJbrHqfdUk"
 CHANNELS = {
     -1002538168053: "https://t.me/TESTIK1P",
@@ -16,6 +20,17 @@ CHANNELS = {
 }
 MAIN_CHANNEL_LINK = "https://t.me/+S-9mdBW05zVkMWMy"
 
+# Flask app для health checks
+app = Flask(__name__)
+
+@app.route('/')
+def health_check():
+    return "OK", 200
+
+def run_flask():
+    app.run(host='0.0.0.0', port=8000)
+
+# Функции бота
 def get_channels_keyboard():
     keyboard = []
     for url in CHANNELS.values():
@@ -31,6 +46,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer()
     user_id = query.from_user.id
     unsubscribed = []
 
@@ -39,13 +55,15 @@ async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE)
             member = await context.bot.get_chat_member(channel_id, user_id)
             logger.info(f"Проверка канала {channel_id}. Статус: {member.status}")
             
-            # Явная проверка допустимых статусов
-            if member.status.lower() not in {"member", "administrator", "creator"}:
+            if member.status not in {"member", "administrator", "creator"}:
                 unsubscribed.append(channel_id)
                 logger.warning(f"Пользователь {user_id} не подписан на {channel_id}")
                 
+        except (Forbidden, ChatNotFound) as e:
+            logger.error(f"Ошибка доступа к каналу {channel_id}: {str(e)}")
+            unsubscribed.append(channel_id)
         except Exception as e:
-            logger.error(f"Ошибка при проверке канала {channel_id}: {str(e)}")
+            logger.error(f"Неизвестная ошибка: {str(e)}")
             unsubscribed.append(channel_id)
 
     if unsubscribed:
@@ -58,6 +76,10 @@ async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
 
 if __name__ == "__main__":
+    # Запуск Flask сервера в фоне
+    Thread(target=run_flask, daemon=True).start()
+    
+    # Инициализация бота
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(check_subscription, pattern="^check$"))
