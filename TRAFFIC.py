@@ -4,6 +4,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram.error import Forbidden, ChatNotFound
 from flask import Flask
+from waitress import serve
 
 # Настройка логов
 logging.basicConfig(
@@ -28,9 +29,8 @@ def health_check():
     return "OK", 200
 
 def run_flask():
-    app.run(host='0.0.0.0', port=8000)
+    serve(app, host='0.0.0.0', port=8000)
 
-# Функции бота
 def get_channels_keyboard():
     keyboard = []
     for url in CHANNELS.values():
